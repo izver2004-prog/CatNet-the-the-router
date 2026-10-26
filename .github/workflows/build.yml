@@ -33,12 +33,20 @@ jobs:
           Invoke-WebRequest "https://www.wintun.net/builds/wintun-0.14.1.zip" -OutFile wt.zip
           Expand-Archive wt.zip -DestinationPath wt -Force
           Copy-Item wt\wintun\bin\amd64\wintun.dll "$env:SRC\wintun.dll"
+      - name: Download fonts (optional, falls back to Segoe UI)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:SRC\ui\fonts" | Out-Null
+          Invoke-WebRequest "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf" -OutFile "$env:SRC\ui\fonts\Montserrat.ttf"
+          Invoke-WebRequest "https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf" -OutFile "$env:SRC\ui\fonts\Inter.ttf"
       - name: Build exe
         shell: pwsh
         run: |
           cd $env:SRC
           pyinstaller --noconfirm --onefile --noconsole --uac-admin --name CatNet `
-            --add-data "ui;ui" --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
+            --icon icon.ico --add-data "icon.ico;." --add-data "ui;ui" `
+            --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
             --collect-all webview --collect-all pythonnet --collect-all clr_loader --hidden-import clr `
             app.py
           Copy-Item dist\CatNet.exe $env:GITHUB_WORKSPACE\CatNet.exe
