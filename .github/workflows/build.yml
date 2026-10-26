@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
 env:
   SB_VERSION: "1.12.0"
+  PFX_BASE64: ${{ secrets.PFX_BASE64 }}
+  PFX_PASSWORD: ${{ secrets.PFX_PASSWORD }}
 jobs:
   build:
     runs-on: windows-latest
@@ -23,6 +25,12 @@ jobs:
       - name: Install dependencies
         shell: pwsh
         run: pip install -r "$env:SRC\requirements.txt"
+      - name: Install PyInstaller (own bootloader = far fewer antivirus false positives)
+        shell: pwsh
+        run: |
+          pip install wheel setuptools
+          pip install --no-binary pyinstaller pyinstaller
+          if ($LASTEXITCODE -ne 0) { Write-Host "Bootloader build failed, using prebuilt PyInstaller"; pip install pyinstaller }
       - name: Download sing-box and wintun
         shell: pwsh
         run: |
@@ -40,17 +48,48 @@ jobs:
           New-Item -ItemType Directory -Force "$env:SRC\ui\fonts" | Out-Null
           Invoke-WebRequest "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf" -OutFile "$env:SRC\ui\fonts\Montserrat.ttf"
           Invoke-WebRequest "https://github.com/google/fonts/raw/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf" -OutFile "$env:SRC\ui\fonts\Inter.ttf"
-      - name: Build exe
+      - name: Build (folder version, recommended)
         shell: pwsh
         run: |
           cd $env:SRC
-          pyinstaller --noconfirm --onefile --noconsole --uac-admin --name CatNet `
-            --icon icon.ico --add-data "icon.ico;." --add-data "ui;ui" `
+          pyinstaller --noconfirm --noupx --onedir --noconsole --uac-admin --name CatNet `
+            --icon icon.ico --version-file version_info.txt --add-data "icon.ico;." --add-data "ui;ui" `
             --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
             --collect-all webview --collect-all pythonnet --collect-all clr_loader --hidden-import clr `
-            app.py
-          Copy-Item dist\CatNet.exe $env:GITHUB_WORKSPACE\CatNet.exe
+            --distpath dist_folder --workpath build_folder app.py
+      - name: Build (single exe)
+        shell: pwsh
+        run: |
+          cd $env:SRC
+          pyinstaller --noconfirm --noupx --onefile --noconsole --uac-admin --name CatNet `
+            --icon icon.ico --version-file version_info.txt --add-data "icon.ico;." --add-data "ui;ui" `
+            --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
+            --collect-all webview --collect-all pythonnet --collect-all clr_loader --hidden-import clr `
+            --distpath dist_single --workpath build_single app.py
+      - name: Sign (only if PFX_BASE64 secret is set)
+        if: env.PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("$PWD\cert.pfx", [Convert]::FromBase64String($env:PFX_BASE64))
+          $st = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object { $_.FullName -match "\\x64\\" } | Select-Object -Last 1).FullName
+          foreach ($f in @("$env:SRC\dist_folder\CatNet\CatNet.exe", "$env:SRC\dist_single\CatNet.exe")) {
+            & $st sign /f "$PWD\cert.pfx" /p $env:PFX_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $f
+          }
+          Remove-Item cert.pfx
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Compress-Archive -Path "$env:SRC\dist_folder\CatNet" -DestinationPath out\CatNet-folder.zip
+          Copy-Item "$env:SRC\dist_single\CatNet.exe" out\CatNet.exe
+          Get-FileHash out\CatNet-folder.zip, out\CatNet.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $(Split-Path $_.Path -Leaf)" } | Set-Content out\SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: CatNet
-          path: CatNet.exe
+          name: CatNet-folder
+          path: |
+            out/CatNet-folder.zip
+            out/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatNet-single-exe
+          path: out/CatNet.exe
