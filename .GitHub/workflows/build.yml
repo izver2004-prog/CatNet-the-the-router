@@ -1,0 +1,95 @@
+name: Build CatNet
+on:
+  push:
+  workflow_dispatch:
+env:
+  SB_VERSION: "1.12.0"
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unpack project zip
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Path . -Filter *.zip -File | Select-Object -First 1
+          if (-not $zip) { throw "Put the project zip (catnet.zip) in the repository root" }
+          Expand-Archive $zip.FullName -DestinationPath _src -Force
+          $app = Get-ChildItem _src -Recurse -Filter app.py | Select-Object -First 1
+          "SRC=$($app.DirectoryName)" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+      - name: Install dependencies
+        shell: pwsh
+        run: pip install -r "$env:SRC\requirements.txt"
+      - name: Download sing-box and wintun
+        shell: pwsh
+        run: |
+          $v = $env:SB_VERSION
+          Invoke-WebRequest "https://github.com/SagerNet/sing-box/releases/download/v$v/sing-box-$v-windows-amd64.zip" -OutFile sb.zip
+          Expand-Archive sb.zip -DestinationPath sb -Force
+          Copy-Item (Get-ChildItem sb -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName "$env:SRC\sing-box.exe"
+          Invoke-WebRequest "https://www.wintun.net/builds/wintun-0.14.1.zip" -OutFile wt.zip
+          Expand-Archive wt.zip -DestinationPath wt -Force
+          Copy-Item wt\wintun\bin\amd64\wintun.dll "$env:SRC\wintun.dll"
+      - name: Build exe
+        shell: pwsh
+        run: |
+          cd $env:SRC
+          pyinstaller --noconfirm --onefile --noconsole --uac-admin --name CatNet `
+            --add-data "ui;ui" --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
+            --collect-all webview --collect-all pythonnet --collect-all clr_loader --hidden-import clr `
+            app.py
+          Copy-Item dist\CatNet.exe $env:GITHUB_WORKSPACE\CatNet.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatNet
+          path: CatNet.exe name: Build CatNet
+on:
+  push:
+  workflow_dispatch:
+env:
+  SB_VERSION: "1.12.0"
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unpack project zip
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Path . -Filter *.zip -File | Select-Object -First 1
+          if (-not $zip) { throw "Put the project zip (catnet.zip) in the repository root" }
+          Expand-Archive $zip.FullName -DestinationPath _src -Force
+          $app = Get-ChildItem _src -Recurse -Filter app.py | Select-Object -First 1
+          "SRC=$($app.DirectoryName)" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+      - name: Install dependencies
+        shell: pwsh
+        run: pip install -r "$env:SRC\requirements.txt"
+      - name: Download sing-box and wintun
+        shell: pwsh
+        run: |
+          $v = $env:SB_VERSION
+          Invoke-WebRequest "https://github.com/SagerNet/sing-box/releases/download/v$v/sing-box-$v-windows-amd64.zip" -OutFile sb.zip
+          Expand-Archive sb.zip -DestinationPath sb -Force
+          Copy-Item (Get-ChildItem sb -Recurse -Filter sing-box.exe | Select-Object -First 1).FullName "$env:SRC\sing-box.exe"
+          Invoke-WebRequest "https://www.wintun.net/builds/wintun-0.14.1.zip" -OutFile wt.zip
+          Expand-Archive wt.zip -DestinationPath wt -Force
+          Copy-Item wt\wintun\bin\amd64\wintun.dll "$env:SRC\wintun.dll"
+      - name: Build exe
+        shell: pwsh
+        run: |
+          cd $env:SRC
+          pyinstaller --noconfirm --onefile --noconsole --uac-admin --name CatNet `
+            --add-data "ui;ui" --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
+            --collect-all webview --collect-all pythonnet --collect-all clr_loader --hidden-import clr `
+            app.py
+          Copy-Item dist\CatNet.exe $env:GITHUB_WORKSPACE\CatNet.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatNet
+          path: CatNet.exe
