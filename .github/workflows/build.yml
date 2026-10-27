@@ -41,6 +41,13 @@ jobs:
           Invoke-WebRequest "https://www.wintun.net/builds/wintun-0.14.1.zip" -OutFile wt.zip
           Expand-Archive wt.zip -DestinationPath wt -Force
           Copy-Item wt\wintun\bin\amd64\wintun.dll "$env:SRC\wintun.dll"
+      - name: Download Xray (XHTTP / mKCP support, optional)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile xray.zip
+          Expand-Archive xray.zip -DestinationPath xr -Force
+          Copy-Item xr\xray.exe "$env:SRC\xray.exe"
       - name: Download fonts (optional, falls back to Segoe UI)
         continue-on-error: true
         shell: pwsh
@@ -52,20 +59,22 @@ jobs:
         shell: pwsh
         run: |
           cd $env:SRC
-          pyinstaller --noconfirm --noupx --onedir --noconsole --uac-admin --name CatNet `
-            --icon icon.ico --version-file version_info.txt --add-data "icon.ico;." --add-data "ui;ui" `
-            --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
-            --collect-all webview --collect-all pythonnet --collect-all clr_loader --hidden-import clr `
-            --distpath dist_folder --workpath build_folder app.py
+          $a = @("--noconfirm","--noupx","--noconsole","--uac-admin","--name","CatNet","--icon","icon.ico","--version-file","version_info.txt",
+                 "--add-data","icon.ico;.","--add-data","ui;ui","--add-binary","sing-box.exe;.","--add-binary","wintun.dll;.",
+                 "--collect-all","webview","--collect-all","pythonnet","--collect-all","clr_loader",
+                 "--hidden-import","clr","--hidden-import","pystray._win32")
+          if (Test-Path xray.exe) { $a += @("--add-binary","xray.exe;.") }
+          pyinstaller @a --onedir --distpath dist_folder --workpath build_folder app.py
       - name: Build (single exe)
         shell: pwsh
         run: |
           cd $env:SRC
-          pyinstaller --noconfirm --noupx --onefile --noconsole --uac-admin --name CatNet `
-            --icon icon.ico --version-file version_info.txt --add-data "icon.ico;." --add-data "ui;ui" `
-            --add-binary "sing-box.exe;." --add-binary "wintun.dll;." `
-            --collect-all webview --collect-all pythonnet --collect-all clr_loader --hidden-import clr `
-            --distpath dist_single --workpath build_single app.py
+          $a = @("--noconfirm","--noupx","--noconsole","--uac-admin","--name","CatNet","--icon","icon.ico","--version-file","version_info.txt",
+                 "--add-data","icon.ico;.","--add-data","ui;ui","--add-binary","sing-box.exe;.","--add-binary","wintun.dll;.",
+                 "--collect-all","webview","--collect-all","pythonnet","--collect-all","clr_loader",
+                 "--hidden-import","clr","--hidden-import","pystray._win32")
+          if (Test-Path xray.exe) { $a += @("--add-binary","xray.exe;.") }
+          pyinstaller @a --onefile --distpath dist_single --workpath build_single app.py
       - name: Sign (only if PFX_BASE64 secret is set)
         if: env.PFX_BASE64 != ''
         shell: pwsh
